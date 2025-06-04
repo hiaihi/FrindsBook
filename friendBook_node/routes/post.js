@@ -45,6 +45,49 @@ router.get('/', async (req, res) => {
   }
 });
 
+// 获取特定用户的所有帖子
+router.get('/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const posts = await Post.find({ authorId: userId }).sort({ createdAt: -1 });
+    
+    // 获取每个帖子作者的信息
+    const postsWithAuthorInfo = await Promise.all(posts.map(async (post) => {
+      const postObj = post.toObject();
+      try {
+        const author = await User.findById(post.authorId);
+        if (author) {
+          postObj.authorName = author.nickname || author.username;
+          postObj.authorAvatar = author.avatar;
+        }
+        
+        // 获取每条评论的作者信息
+        if (postObj.comments && postObj.comments.length > 0) {
+          postObj.comments = await Promise.all(postObj.comments.map(async (comment) => {
+            const commentObj = {...comment};
+            try {
+              const commentAuthor = await User.findById(comment.userId);
+              if (commentAuthor) {
+                commentObj.authorName = commentAuthor.nickname || commentAuthor.username;
+              }
+            } catch (err) {
+              console.error('获取评论作者信息失败:', err);
+            }
+            return commentObj;
+          }));
+        }
+      } catch (err) {
+        console.error('获取作者信息失败:', err);
+      }
+      return postObj;
+    }));
+    
+    res.json(postsWithAuthorInfo);
+  } catch (error) {
+    res.status(500).json({ message: '服务器错误', error: error.message });
+  }
+});
+
 // 发布动态
 router.post('/', async (req, res) => {
   try {

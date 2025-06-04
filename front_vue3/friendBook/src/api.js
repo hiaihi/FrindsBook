@@ -338,4 +338,15 @@ export const generateImageFromTextAPI = async (textContent) => {
   }
 };
 
+// 获取特定用户的帖子
+export const getUserPosts = async (userId) => {
+  try {
+    const response = await api.get(`/api/posts/user/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error('获取用户帖子失败:', error);
+    throw error.response ? error.response.data : { message: '获取用户帖子失败，请稍后再试' };
+  }
+};
+
 export default api;

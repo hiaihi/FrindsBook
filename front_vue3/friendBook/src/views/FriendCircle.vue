@@ -174,17 +174,21 @@
           </div>
           <div class="post-content">{{ post.content }}</div>
           <!-- 可扩展图片展示区域 -->
-          <div v-if="post.tags && post.tags.length" class="post-tags">
-            <span v-for="(tag, idx) in post.tags" :key="idx" class="post-tag">#{{ tag }}</span>
-          </div>
           <div v-if="post.images && post.images.length" class="post-images">
             <img v-for="(img, idx) in post.images" :key="idx" :src="img" class="post-img" />
           </div>
+          <div v-if="post.tags && post.tags.length" class="post-tags">
+            <span v-for="(tag, idx) in post.tags" :key="idx" class="post-tag">#{{ tag }}</span>
+          </div>
           <div class="post-actions">
-            <button class="like-btn" :class="{ liked: post.liked }" @click="toggleLike(post)">
-              <span v-if="post.liked">❤️</span><span v-else>🤍</span> {{ post.likes }}
+            <button class="stat-btn" :class="{ liked: post.liked }" @click="toggleLike(post)">
+              <i class="fas fa-heart"></i>
+              <span>{{ post.likes }}</span>
             </button>
-            <button class="comment-btn" @click="showComments(post)">💬 评论</button>
+            <button class="stat-btn" @click="showComments(post)">
+              <i class="fas fa-comment"></i>
+              <span>评论</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1102,27 +1106,45 @@ const generateImageFromText = async () => {
 }
 .post-actions {
   display: flex;
-  gap: 2rem;
+  gap: 15px;
   align-items: center;
-  margin-top: 0.3rem;
+  margin-top: 0.8rem;
 }
-.like-btn, .comment-btn {
-  background: none;
-  border: none;
-  color: #07c160;
-  cursor: pointer;
-  font-size: 1.08rem;
-  padding: 0;
+
+.stat-btn {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  transition: color 0.2s;
+  gap: 5px;
+  color: #555;
+  cursor: pointer;
+  transition: color 0.3s ease-in-out, background-color 0.3s ease-in-out;
+  background: none;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 1.08rem;
 }
-.like-btn.liked {
-  color: #e64340;
+
+.stat-btn:hover {
+  color: #1890ff;
+  background-color: rgba(24, 144, 255, 0.1);
+  text-decoration: none;
 }
-.like-btn:hover, .comment-btn:hover {
-  text-decoration: underline;
+
+.stat-btn.liked {
+  color: #ff4d4f;
+}
+
+.stat-btn.liked:hover {
+  background-color: rgba(255, 77, 79, 0.1);
+}
+
+.stat-btn i {
+  font-size: 1rem;
+}
+
+.stat-btn span {
+  font-size: 0.9rem;
 }
 .comment-dialog-mask {
   position: fixed;

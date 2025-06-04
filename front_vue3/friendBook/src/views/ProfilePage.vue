@@ -130,17 +130,120 @@
         </button>
         <div v-if="message" class="message-toast" :class="{success: !message.includes('失败')}">{{ message }}</div>
       </div>
+      
+      <!-- 用户发布的帖子区域 -->
+      <div class="user-posts-section">
+        <h3 class="section-title">
+          <i class="fas fa-file-alt"></i>
+          {{ isSelf ? '我的动态' : `${nickname || username}的动态` }}
+        </h3>
+        
+        <div v-if="isLoadingPosts" class="loading-posts">
+          <i class="fas fa-spinner fa-spin"></i>
+          <span>加载中...</span>
+        </div>
+        
+        <div v-else-if="userPosts.length === 0" class="no-posts">
+          <i class="fas fa-inbox"></i>
+          <p>{{ isSelf ? '你还没有发布任何动态' : '该用户还没有发布任何动态' }}</p>
+          <button v-if="isSelf" class="btn btn-primary" @click="goToCreatePost">
+            <i class="fas fa-plus"></i> 发布新动态
+          </button>
+        </div>
+        
+        <div v-else class="posts-container">
+          <div v-for="post in userPosts" :key="post._id" class="post-card">
+            <div class="post-header">
+              <img :src="getUserAvatar(post.authorAvatar)" alt="avatar" class="post-avatar">
+              <div class="post-info">
+                <div class="post-author">{{ post.authorName }}</div>
+                <div class="post-time">{{ formatPostTime(post.createdAt) }}</div>
+              </div>
+              <div v-if="isSelf" class="post-actions">
+                <button class="btn-icon" @click="deleteUserPost(post._id)">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+            
+            <div class="post-content">
+              <p>{{ post.content }}</p>
+              <div v-if="post.images && post.images.length" :class="['post-images', {
+                'single-image': post.images.length === 1,
+                'two-images': post.images.length === 2,
+                'three-images': post.images.length === 3
+              }]">
+                <img v-for="(image, index) in post.images" :key="index" :src="image" class="post-image" @click="showImagePreview(image)"/>
+              </div>
+              <div v-if="post.tags && post.tags.length > 0" class="post-tags">
+                <span v-for="(tag, index) in post.tags" :key="index" class="post-tag">
+                  #{{ tag }}
+                </span>
+              </div>
+            </div>
+            
+            <div class="post-footer">
+              <div class="post-stats">
+                <button class="stat-btn" :class="{ 'liked': isPostLiked(post) }" @click="toggleLike(post)">
+                  <i class="fas fa-heart"></i>
+                  <span>{{ post.likes ? post.likes.length : 0 }}</span>
+                </button>
+                <button class="stat-btn" @click="toggleComments(post)">
+                  <i class="fas fa-comment"></i>
+                  <span>{{ post.comments ? post.comments.length : 0 }}</span>
+                </button>
+              </div>
+            </div>
+              
+              <!-- 评论区 -->
+              <div v-if="post.showComments" class="post-comments">
+                <div v-for="comment in post.comments" :key="comment._id" class="comment">
+                  <div class="comment-author">{{ comment.authorName || '用户' }}:</div>
+                  <div class="comment-content">{{ comment.content }}</div>
+                  <div v-if="comment.userId && localStorage?.getItem('userId') && comment.userId === localStorage.getItem('userId')" class="comment-actions">
+                    <button class="btn-icon small" @click="deleteComment(post._id, comment._id)">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </div>
+                </div>
+                
+                <div class="comment-form">
+                  <input 
+                    type="text" 
+                    v-model="post.newComment" 
+                    placeholder="发表评论..." 
+                    @keyup.enter="addComment(post._id, post.newComment, post)"
+                  >
+                  <button class="btn-icon" @click="addComment(post._id, post.newComment, post)">
+                    <i class="fas fa-paper-plane"></i>
+                  </button>
+                </div>
+              </div>
+              
+              <button class="btn-text" @click="toggleComments(post)">
+                {{ post.showComments ? '收起评论' : '查看评论' }}
+              </button>
+            </div>
+          </div>
+          
+          <div v-if="hasMorePosts" class="load-more">
+            <button class="btn btn-secondary" @click="loadMorePosts" :disabled="isLoadingMore">
+              <i v-if="isLoadingMore" class="fas fa-spinner fa-spin"></i>
+              <span>{{ isLoadingMore ? '加载中...' : '加载更多' }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { getUserInfo, getUserInfoById, sendFriendRequest, searchUsers } from '../api';
+import { getUserInfo, getUserInfoById, sendFriendRequest, searchUsers, getUserPosts, likePost, unlikePost, addComment as apiAddComment, deleteComment as apiDeleteComment, deletePost } from '../api';
 
 // 用户数据相关响应式变量
-const username = ref(localStorage.getItem('username') || '未登录用户');
+const username = ref(localStorage?.getItem('username') || '未登录用户');
 const nickname = ref('');
 const email = ref('');
 const userAvatar = ref('');
@@ -174,9 +277,17 @@ const addFriendLoading = ref(false);
 const message = ref('');
 const isLoading = ref(false);
 
+// 帖子相关变量
+const userPosts = ref([]);
+const isLoadingPosts = ref(false);
+const hasMorePosts = ref(false);
+const isLoadingMore = ref(false);
+const currentPage = ref(1);
+const postsPerPage = ref(5);
+
 // 计算属性
 const isSelf = computed(() => {
-  return !route.params.userId || route.params.userId === localStorage.getItem('userId');
+  return !route.params.userId || route.params.userId === localStorage?.getItem('userId');
 });
 
 const genderText = computed(() => {
@@ -232,12 +343,166 @@ const loadUserData = async (userId) => {
     followersCount.value = userData.followersCount || 0;
     followingCount.value = userData.followingCount || 0;
     
+    // 加载用户帖子
+    loadUserPosts(userId || userData._id);
+    
   } catch (error) {
     console.error('获取用户信息失败:', error);
     message.value = '加载用户信息失败，请重试';
   } finally {
     isLoading.value = false;
   }
+};
+
+// 加载用户帖子
+const loadUserPosts = async (userId) => {
+  isLoadingPosts.value = true;
+  try {
+    const posts = await getUserPosts(userId);
+    // 为每个帖子添加UI状态属性
+    userPosts.value = posts.map(post => ({
+      ...post,
+      showComments: false,
+      newComment: ''
+    }));
+  } catch (error) {
+    console.error('获取用户帖子失败:', error);
+    message.value = '加载用户帖子失败，请重试';
+    setTimeout(() => message.value = '', 3000);
+  } finally {
+    isLoadingPosts.value = false;
+  }
+};
+
+// 加载更多帖子
+const loadMorePosts = async () => {
+  if (isLoadingMore.value) return;
+  
+  isLoadingMore.value = true;
+  currentPage.value++;
+  
+  try {
+    // 这里应该实现分页加载逻辑
+    // 目前后端API还没有实现分页，这里只是UI展示
+    setTimeout(() => {
+      isLoadingMore.value = false;
+      hasMorePosts.value = false; // 假设没有更多帖子了
+    }, 1000);
+  } catch (error) {
+    console.error('加载更多帖子失败:', error);
+    isLoadingMore.value = false;
+  }
+};
+
+// 切换评论显示状态
+const toggleComments = (post) => {
+  post.showComments = !post.showComments;
+};
+
+// 添加评论
+const addComment = async (postId, content, post) => {
+  if (!content.trim()) return;
+  
+  try {
+    const result = await apiAddComment(postId, content);
+    // 更新评论列表
+    if (result && result.comment) {
+      if (!post.comments) post.comments = [];
+      post.comments.push(result.comment);
+      post.newComment = ''; // 清空评论输入框
+    }
+  } catch (error) {
+    console.error('添加评论失败:', error);
+    message.value = '添加评论失败，请重试';
+    setTimeout(() => message.value = '', 3000);
+  }
+};
+
+// 删除评论
+const deleteComment = async (postId, commentId) => {
+  try {
+    await apiDeleteComment(postId, commentId);
+    // 更新UI
+    const postIndex = userPosts.value.findIndex(p => p._id === postId);
+    if (postIndex !== -1) {
+      userPosts.value[postIndex].comments = userPosts.value[postIndex].comments.filter(
+        comment => comment._id !== commentId
+      );
+    }
+  } catch (error) {
+    console.error('删除评论失败:', error);
+    message.value = '删除评论失败，请重试';
+    setTimeout(() => message.value = '', 3000);
+  }
+};
+
+// 检查帖子是否已点赞
+const isPostLiked = (post) => {
+  const userId = localStorage?.getItem('userId');
+  return post.likes && post.likes.some(like => like.userId === userId);
+};
+
+// 切换点赞状态
+const toggleLike = async (post) => {
+  try {
+    if (isPostLiked(post)) {
+      await unlikePost(post._id);
+      // 更新UI
+      const userId = localStorage?.getItem('userId');
+      post.likes = post.likes.filter(like => like.userId !== userId);
+    } else {
+      const result = await likePost(post._id);
+      // 更新UI
+      if (!post.likes) post.likes = [];
+      post.likes.push({ userId: localStorage?.getItem('userId') });
+    }
+  } catch (error) {
+    console.error('操作点赞失败:', error);
+    message.value = '操作失败，请重试';
+    setTimeout(() => message.value = '', 3000);
+  }
+};
+
+// 删除帖子
+const deleteUserPost = async (postId) => {
+  if (!confirm('确定要删除这条动态吗？')) return;
+  
+  try {
+    await deletePost(postId);
+    // 更新UI
+    userPosts.value = userPosts.value.filter(post => post._id !== postId);
+    message.value = '删除成功';
+    setTimeout(() => message.value = '', 3000);
+  } catch (error) {
+    console.error('删除帖子失败:', error);
+    message.value = '删除失败，请重试';
+    setTimeout(() => message.value = '', 3000);
+  }
+};
+
+// 格式化帖子时间
+const formatPostTime = (timestamp) => {
+  if (!timestamp) return '';
+  
+  const postDate = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now - postDate;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  
+  if (diffSec < 60) return '刚刚';
+  if (diffMin < 60) return `${diffMin}分钟前`;
+  if (diffHour < 24) return `${diffHour}小时前`;
+  if (diffDay < 30) return `${diffDay}天前`;
+  
+  return `${postDate.getFullYear()}-${postDate.getMonth() + 1}-${postDate.getDate()}`;
+};
+
+// 跳转到发布新动态页面
+const goToCreatePost = () => {
+  router.push('/friend-circle');
 };
 
 // 监听路由变化
@@ -251,7 +516,7 @@ watch(
 
 // 组件挂载时检查登录状态
 onMounted(() => {
-  if (!localStorage.getItem('token')) {
+  if (!localStorage?.getItem('token')) {
     router.push('/login');
   }
 });
@@ -310,12 +575,45 @@ const getUserAvatar = (avatar) => {
     : 'https://picsum.photos/50/50';
 };
 
+// 图片预览功能
+const showImagePreview = (image) => {
+  // 创建大图预览
+  const previewContainer = document.createElement('div');
+  previewContainer.style.position = 'fixed';
+  previewContainer.style.top = '0';
+  previewContainer.style.left = '0';
+  previewContainer.style.width = '100%';
+  previewContainer.style.height = '100%';
+  previewContainer.style.backgroundColor = 'rgba(0,0,0,0.8)';
+  previewContainer.style.display = 'flex';
+  previewContainer.style.justifyContent = 'center';
+  previewContainer.style.alignItems = 'center';
+  previewContainer.style.zIndex = '1000';
+  previewContainer.style.cursor = 'pointer';
+  
+  const previewImage = document.createElement('img');
+  // 检查图片URL是否已包含http前缀
+  previewImage.src = image.startsWith('http') ? image : `http://localhost:3000${image}`;
+  previewImage.style.maxWidth = '90%';
+  previewImage.style.maxHeight = '90%';
+  previewImage.style.borderRadius = '8px';
+  previewImage.style.boxShadow = '0 5px 15px rgba(0,0,0,0.3)';
+  
+  previewContainer.appendChild(previewImage);
+  document.body.appendChild(previewContainer);
+  
+  // 点击关闭预览
+  previewContainer.addEventListener('click', () => {
+    document.body.removeChild(previewContainer);
+  });
+};
+
 // 跳转到用户主页
 const goToUserProfile = (userId) => {
   showResults.value = false;
   searchQuery.value = '';
   
-  if (userId === localStorage.getItem('userId')) {
+  if (userId === localStorage?.getItem('userId')) {
     // 如果是当前用户，使用replace避免历史记录堆积
     router.replace('/profile');
   } else {
@@ -393,30 +691,30 @@ onMounted(() => {
 }
 
 .profile-content {
-  margin-top: 1rem;
+  margin-top: 1.5rem; /* 调整上边距 */
   background: #fff;
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+  border-radius: 16px; /* 增加圆角 */
+  padding: 2.5rem; /* 增加内边距 */
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1); /* 调整阴影 */
 }
 
 .profile-header {
   display: flex;
-  gap: 2.5rem;
-  margin-bottom: 2.5rem;
+  gap: 2rem; /* 调整间距 */
+  margin-bottom: 2rem; /* 调整下边距 */
   align-items: flex-start;
 }
 
 .profile-avatar-container {
   position: relative;
-  width: 140px;
-  height: 140px;
+  width: 150px; /* 稍微增大头像尺寸 */
+  height: 150px;
   border-radius: 50%;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.3s;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  border: 4px solid #fff;
+  transition: all 0.3s ease-in-out;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  border: 5px solid #fff;
 }
 
 .profile-avatar {
@@ -453,41 +751,61 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
+  background: #fdfdfd; /* 稍微调整背景色 */
+  border-radius: 16px; /* 增加圆角 */
+  padding: 2rem; /* 增加内边距 */
+  box-shadow: 0 5px 15px rgba(0,0,0,0.07);
+  transition: all 0.3s ease-in-out;
+}
+
+.profile-info:hover {
+  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+  transform: translateY(-3px);
 }
 
 .profile-info h2 {
-  margin: 0 0 1rem;
-  font-size: 1.8rem;
-  color: #222;
+  margin: 0 0 1.2rem; /* 调整下边距 */
+  font-size: 2rem; /* 调整字体大小 */
+  color: #1a1a1a; /* 调整字体颜色 */
+  font-weight: 600;
 }
 
 .profile-info-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 1.5rem;
-  margin-bottom: 0.8rem;
+  gap: 1.2rem; /* 调整间距 */
+  margin-bottom: 1.2rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 1px solid #e9e9e9; /* 调整边框颜色 */
+}
+
+.profile-info-row:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
 }
 
 .profile-info-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem; /* 调整间距 */
   margin: 0;
-  color: #666;
-  font-size: 14px;
-  background: #f9f9f9;
-  padding: 6px 12px;
-  border-radius: 20px;
-  transition: all 0.3s;
+  color: #555; /* 调整字体颜色 */
+  font-size: 0.95rem; /* 调整字体大小 */
+  background: #f0f2f5; /* 调整背景色 */
+  padding: 8px 14px; /* 调整内边距 */
+  border-radius: 25px;
+  transition: all 0.3s ease-in-out;
 }
 
 .profile-info-item:hover {
-  background: #f0f0f0;
+  background: #e6e8eb;
   transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 .profile-info-item i {
-  color: #1890ff;
+  color: #007bff; /* 调整图标颜色 */
+  font-size: 1rem;
 }
 
 .stat-item {
@@ -495,40 +813,42 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: #f9f9f9;
-  padding: 12px 20px;
-  border-radius: 8px;
-  transition: all 0.3s;
-  min-width: 80px;
+  background: #f8f9fa; /* 调整背景色 */
+  padding: 1rem 1.5rem; /* 调整内边距 */
+  border-radius: 12px; /* 增加圆角 */
+  transition: all 0.3s ease-in-out;
+  min-width: 90px; /* 调整最小宽度 */
+  border: 1px solid #e9ecef;
 }
 
 .stat-item:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-  background: #f0f7ff;
+  transform: translateY(-4px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.12);
+  background: #e9f5ff; /* 调整悬浮背景色 */
+  border-color: #b3d7ff;
 }
 
 .stat-count {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #1890ff;
+  font-size: 1.8rem; /* 调整字体大小 */
+  font-weight: 700; /* 调整字重 */
+  color: #007bff; /* 调整字体颜色 */
 }
 
 .stat-label {
-  font-size: 0.9rem;
-  color: #666;
-  margin-top: 4px;
+  font-size: 0.85rem; /* 调整字体大小 */
+  color: #495057; /* 调整字体颜色 */
+  margin-top: 6px;
 }
 
 .search-container {
   position: relative;
-  width: 300px;
+  width: 320px; /* 调整宽度 */
   margin-left: 20px;
 }
 
 .search-input {
   width: 100%;
-  padding: 10px 35px 10px 15px;
+  padding: 12px 40px 12px 18px; /* 调整内边距 */
   border: 1px solid #e8e8e8;
   border-radius: 20px;
   font-size: 14px;
@@ -553,29 +873,29 @@ onMounted(() => {
 
 .search-results {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 10px); /* 调整与输入框的距离 */
   left: 0;
   width: 100%;
-  max-height: 300px;
+  max-height: 350px; /* 调整最大高度 */
   overflow-y: auto;
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+  border-radius: 10px; /* 增加圆角 */
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15); /* 调整阴影 */
   z-index: 1000;
-  margin-top: 8px;
+  margin-top: 0; /* 移除原有 margin-top */
 }
 
 .search-result-item {
   display: flex;
   align-items: center;
-  padding: 12px;
+  padding: 14px 16px; /* 调整内边距 */
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f0;
-  transition: all 0.3s;
+  border-bottom: 1px solid #eef0f2; /* 调整边框颜色 */
+  transition: background-color 0.25s ease-in-out;
 }
 
 .search-result-item:hover {
-  background: #f5f5f5;
+  background: #f0f8ff; /* 调整悬浮背景色 */
 }
 
 .search-result-item:last-child {
@@ -583,51 +903,55 @@ onMounted(() => {
 }
 
 .result-avatar {
-  width: 36px;
-  height: 36px;
+  width: 40px; /* 调整头像大小 */
+  height: 40px;
   border-radius: 50%;
-  margin-right: 12px;
+  margin-right: 14px; /* 调整右边距 */
   object-fit: cover;
-  border: 2px solid #f0f0f0;
+  border: 2px solid #e9ecef; /* 调整边框颜色 */
 }
 
 .result-info {
   display: flex;
   flex-direction: column;
+  line-height: 1.4; /* 调整行高 */
 }
 
 .result-name {
-  font-weight: 500;
-  color: #333;
+  font-weight: 600; /* 调整字重 */
+  color: #212529; /* 调整字体颜色 */
+  font-size: 0.95rem;
 }
 
 .result-username {
-  font-size: 12px;
-  color: #999;
+  font-size: 0.8rem; /* 调整字体大小 */
+  color: #6c757d; /* 调整字体颜色 */
 }
 
 .btn {
-  padding: 0.6rem 1.2rem;
+  padding: 0.7rem 1.4rem; /* 调整内边距 */
   border: none;
-  border-radius: 6px;
+  border-radius: 8px; /* 增加圆角 */
   cursor: pointer;
   font-weight: 500;
-  transition: all 0.3s;
+  transition: all 0.25s ease-in-out;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  font-size: 0.95rem;
 }
 
 .btn-primary {
-  background: #1890ff;
+  background: linear-gradient(135deg, #1890ff, #007bff); /* 添加渐变背景 */
   color: white;
+  box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
 }
 
 .btn-primary:hover {
-  background: #40a9ff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(24,144,255,0.3);
+  background: linear-gradient(135deg, #007bff, #1890ff);
+  box-shadow: 0 6px 14px rgba(0, 123, 255, 0.4);
+  transform: translateY(-1px);
 }
 
 .btn-success {
@@ -747,198 +1071,381 @@ onMounted(() => {
   gap: 1rem;
 }
 
-/* 响应式处理 */
-@media (max-width: 768px) {
-  .profile-header {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-  
-  .profile-info-container {
-    width: 100%;
-  }
-  
-  .profile-info-row {
-    justify-content: center;
-  }
-  
-  .profile-stats {
-    justify-content: center;
-  }
-  
-  .profile-nav {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  
-  .search-container {
-    order: 3;
-    width: 100%;
-    margin: 1rem 0 0;
-  }
-  
-  .user-info {
-    margin-left: 0;
-  }
-}
-
-@media (max-width: 480px) {
-  .profile-stats {
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  
-  .privacy-list {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* 新增样式 */
-.back-link {
-  color: #1890ff;
-  font-weight: 600;
-  background: rgba(24, 144, 255, 0.1);
-  padding: 6px 12px;
-  border-radius: 20px;
+.user-posts-section {
+  margin-top: 2rem;
+  background: #fff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   transition: all 0.3s;
 }
 
-.back-link:hover {
-  background: rgba(24, 144, 255, 0.2);
-  transform: translateX(-5px);
+.user-posts-section:hover {
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+  transform: translateY(-2px);
 }
 
-.user-banner {
-  background: linear-gradient(to right, #e6f7ff, #f0f5ff);
-  border-radius: 8px;
-  padding: 12px 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-  border-left: 4px solid #1890ff;
-  animation: fadeIn 0.5s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.banner-content {
+.section-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.8rem;
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 2px solid #f0f0f0;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.section-title i {
   color: #1890ff;
-  font-size: 15px;
+  font-size: 1.3rem;
 }
 
-.banner-content i {
-  font-size: 18px;
+.loading-posts {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 0;
+  color: #999;
+  gap: 1rem;
 }
 
-.banner-content strong {
+.loading-posts i {
+  font-size: 2rem;
+  color: #1890ff;
+}
+
+.no-posts {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 0;
+  color: #999;
+  gap: 1rem;
+}
+
+.no-posts i {
+  font-size: 3rem;
+  color: #d9d9d9;
+}
+
+.no-posts p {
+  margin: 0.5rem 0 1.5rem;
+  font-size: 1.1rem;
+}
+
+.posts-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); /* 增加卡片宽度 */
+  gap: 25px; /* 增加网格间距 */
+  margin-top: 1rem;
+}
+
+.post-card {
+  background: #fff;
+  border-radius: 16px; /* 增加圆角 */
+  box-shadow: 0 8px 20px rgba(0,0,0,0.08); /* 优化阴影效果 */
+  padding: 24px; /* 增加内边距 */
+  transition: all 0.3s ease-in-out;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(0,0,0,0.03); /* 添加微妙边框 */
+  overflow: hidden; /* 确保内容不溢出 */
+}
+
+.post-card:hover {
+  transform: translateY(-6px); /* 增强悬停效果 */
+  box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+  border-color: rgba(24, 144, 255, 0.1); /* 悬停时边框颜色变化 */
+}
+
+.post-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 18px; /* 增加下边距 */
+}
+
+.post-avatar {
+  width: 50px; /* 增加头像大小 */
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 14px; /* 调整右边距 */
+  border: 2px solid #f0f0f0;
+  transition: all 0.3s;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.1); /* 添加头像阴影 */
+}
+
+.post-avatar:hover {
+  border-color: #1890ff;
+  transform: scale(1.05);
+}
+
+.post-info {
+  flex-grow: 1;
+}
+
+.post-author {
   font-weight: 600;
+  color: #333;
+  font-size: 1.15rem; /* 增加字体大小 */
+  margin-bottom: 3px; /* 添加间距 */
+}
+
+.post-time {
+  font-size: 0.85rem;
+  color: #777;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.post-time:before {
+  content: '•';
+  font-size: 0.8rem;
+  color: #aaa;
+}
+
+.post-actions {
+  margin-left: auto;
+}
+
+.post-content {
+  margin-bottom: 18px; /* 增加下边距 */
+}
+
+.post-content p {
+  margin: 0 0 12px; /* 调整段落下边距 */
+  line-height: 1.7; /* 增加行高 */
+  color: #333;
+  font-size: 1.05rem; /* 增加字体大小 */
+}
+
+.post-images {
+  display: grid;
+  /* 修改网格布局，根据图片数量自动调整布局 */
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px; /* 增加图片间距 */
+  margin: 15px 0;
+  border-radius: 12px;
+  overflow: hidden; /* 确保图片不溢出 */
+}
+
+.post-image {
+  width: 100%;
+  aspect-ratio: 1/1; /* 使用固定宽高比而不是固定高度 */
+  border-radius: 10px; /* 增加圆角 */
+  object-fit: cover;
+  cursor: pointer;
+  transition: all 0.3s ease-in-out;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08); /* 添加图片阴影 */
+}
+
+/* 添加根据图片数量的特殊布局 */
+.post-images.single-image {
+  grid-template-columns: minmax(200px, 400px);
+}
+
+.post-images.two-images {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.post-images.three-images {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .post-images {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  
+  .post-images.single-image {
+    grid-template-columns: minmax(150px, 300px);
+  }
+}
+
+.post-image:hover {
+  transform: scale(1.03); /* 增强悬停放大效果 */
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+}
+
+.post-tags {
+  margin: 12px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.post-tag {
+  display: inline-flex;
+  align-items: center;
+  background: #f0f5ff; /* 更改背景色为蓝色系 */
+  color: #1890ff; /* 更改字体颜色为主题色 */
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  border: 1px solid rgba(24, 144, 255, 0.2); /* 添加微妙边框 */
+}
+
+.post-tag:hover {
+  background: #e6f7ff;
+  transform: translateY(-2px);
+}
+
+.post-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #f0f0f0; /* 更改边框颜色 */
+  padding-top: 16px; /* 增加内边距 */
+  margin-top: auto; /* 将 footer 推到底部 */
+}
+
+.post-stats {
+  display: flex;
+  gap: 20px; /* 增加间距 */
+}
+
+.stat-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.3s ease-in-out;
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+.stat-btn:hover {
+  color: #1890ff;
+  background-color: rgba(24, 144, 255, 0.08);
+  transform: translateY(-2px);
+}
+
+.stat-btn.liked {
+  color: #ff4d4f;
+  background-color: rgba(255, 77, 79, 0.05);
+}
+
+.stat-btn.liked:hover {
+  background-color: rgba(255, 77, 79, 0.1);
+}
+
+.stat-btn i {
+  font-size: 1.1rem;
+}
+
+.stat-btn span {
+  font-size: 0.95rem;
+}
+
+.post-comments {
+  margin-top: 18px;
+  border-top: 1px solid #f0f0f0;
+  padding-top: 18px;
+  background-color: #fafafa; /* 添加背景色 */
+  border-radius: 12px; /* 添加圆角 */
+  padding: 16px; /* 添加内边距 */
+}
+
+.comment {
+  display: flex;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+
+.comment-author {
+  font-weight: 600;
+  margin-right: 5px;
   color: #333;
 }
 
-.private-info {
-  border: 1px dashed #d9d9d9;
-  background: #fafafa;
+.comment-content {
+  flex-grow: 1;
+  color: #555;
 }
 
-.privacy-indicator {
-  margin-left: 8px;
-  color: #999;
-  font-size: 12px;
+.comment-actions {
+  margin-left: 10px;
 }
 
-.add-friend-btn {
-  position: relative;
-  overflow: hidden;
-  transition: all 0.3s;
+.comment-form {
+  display: flex;
+  margin-top: 15px;
 }
 
-.add-friend-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-  transition: all 0.6s;
+.comment-form input {
+  flex-grow: 1;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 20px;
+  margin-right: 10px;
+  font-size: 0.9rem;
 }
 
-.add-friend-btn:hover::before {
-  left: 100%;
+.comment-form button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #1890ff;
+  font-size: 1.2rem;
+  transition: color 0.3s ease-in-out;
 }
 
-.message-toast {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  padding: 12px 20px;
-  background: #f5222d;
-  color: white;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  z-index: 1000;
-  animation: slideIn 0.3s ease-out;
+.comment-form button:hover {
+  color: #007bff;
 }
 
-.message-toast.success {
-  background: #52c41a;
+.btn-text {
+  background: none;
+  border: none;
+  color: #1890ff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: color 0.3s ease-in-out;
 }
 
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+.btn-text:hover {
+  color: #007bff;
 }
 
-/* 响应式优化 */
+.load-more {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.loading-posts, .no-posts {
+  text-align: center;
+  padding: 40px 0;
+  color: #777;
+}
+
+.loading-posts i, .no-posts i {
+  font-size: 2rem;
+  margin-bottom: 10px;
+}
+
+.no-posts button {
+  margin-top: 20px;
+}
+
+/* Responsive adjustments */
 @media (max-width: 768px) {
-  .profile-header {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-  
-  .profile-info-container {
-    width: 100%;
-  }
-  
-  .profile-info-row {
-    justify-content: center;
-  }
-  
-  .profile-stats {
-    justify-content: center;
-  }
-  
-  .profile-nav {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  
-  .search-container {
-    order: 3;
-    width: 100%;
-    margin: 1rem 0 0;
-  }
-  
-  .user-info {
-    margin-left: 0;
-  }
-  
-  .user-banner {
-    margin: 0 10px 20px;
-  }
-  
-  .back-link {
-    width: 100%;
-    text-align: center;
-    margin-bottom: 10px;
+  .posts-container {
+    grid-template-columns: 1fr; /* 在小屏幕上堆叠 */
   }
 }
 </style>
