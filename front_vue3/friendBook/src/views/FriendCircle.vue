@@ -124,7 +124,37 @@
                 <button @click="closeAiPreview" class="close-btn">×</button>
               </div>
               <div v-if="aiResultPreview.type === 'text'" class="ai-result-content">
-                {{ aiResultPreview.content }}
+                <div class="ai-generated-text">{{ aiResultPreview.content }}</div>
+                
+                <!-- 显示AI分析信息 -->
+                <div v-if="aiResultPreview.originalData && aiResultPreview.originalData.originalCaption" class="ai-analysis-info">
+                  <div class="ai-analysis-section">
+                    <div class="ai-analysis-title">原始描述：</div>
+                    <div class="ai-analysis-content">{{ aiResultPreview.originalData.originalCaption }}</div>
+                  </div>
+                  
+                  <div v-if="aiResultPreview.originalData.enhancedCaption" class="ai-analysis-section">
+                    <div class="ai-analysis-title">增强描述：</div>
+                    <div class="ai-analysis-content">{{ aiResultPreview.originalData.enhancedCaption }}</div>
+                  </div>
+                  
+                  <div v-if="aiResultPreview.originalData.suggestedTags && aiResultPreview.originalData.suggestedTags.length" class="ai-analysis-section">
+                    <div class="ai-analysis-title">建议标签：</div>
+                    <div class="ai-tags-container">
+                      <span 
+                        v-for="(tag, idx) in aiResultPreview.originalData.suggestedTags" 
+                        :key="idx"
+                        class="ai-suggested-tag"
+                        @click="quickAddTag(tag)">
+                        #{{ tag }}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div v-if="aiResultPreview.originalData.model" class="ai-model-info">
+                    由 {{ aiResultPreview.originalData.model }} 生成
+                  </div>
+                </div>
               </div>
               <div v-else-if="aiResultPreview.type === 'image'" class="ai-result-content">
                 <img :src="aiResultPreview.content" class="ai-generated-image" />
@@ -232,7 +262,7 @@ import { useRouter } from 'vue-router';
 // 移除直接导入axios
 // import axios from 'axios';
 // 更新导入语句，引入新添加的API方法
-import { getUserInfo, getPosts, createPost, likePost, unlikePost, addComment, deleteComment, deletePost, generateTextFromImageAPI, generateImageFromTextAPI } from '../api';
+import { getUserInfo, getPosts, createPost, likePost, unlikePost, addComment, deleteComment, deletePost, generateTextFromImageAPI, generateImageFromTextAPI, generateTextFromMultipleImagesAPI } from '../api';
 
 const username = ref(localStorage.getItem('username') || '未登录用户');
 const nickname = ref(localStorage.getItem('nickname') || '');
@@ -856,11 +886,18 @@ const generateTextFromImage = async () => {
     loadingToast.innerHTML = '<div class="ai-loading-spinner"></div><span>AI正在分析图片...</span>';
     document.body.appendChild(loadingToast);
     
-    // 获取第一张图片作为分析对象
-    const imageData = newPostImages.value[0];
+    let result;
     
-    // 调用API进行图像分析
-    const result = await generateTextFromImageAPI(imageData);
+    // 判断是单张图片还是多张图片
+    if (newPostImages.value.length === 1) {
+      // 单张图片处理
+      const imageData = newPostImages.value[0];
+      result = await generateTextFromImageAPI(imageData);
+    } else {
+      // 多张图片处理（最多9张）
+      const imagesData = newPostImages.value.slice(0, 9);
+      result = await generateTextFromMultipleImagesAPI(imagesData);
+    }
     
     // 显示AI预览结果
     aiResultPreview.value = {
@@ -1307,10 +1344,12 @@ const generateImageFromText = async () => {
 .modern-dialog {
   max-width: 600px;
   width: 90%;
-  border-radius: 18px;
+  min-width: auto; /* 移除最小宽度限制，使其在小屏幕上更好适配 */
+  border-radius: 16px; /* 稍微减小圆角 */
   box-shadow: 0 8px 32px rgba(0,0,0,0.13);
   background: #fff;
-  padding: 24px;
+  padding: 16px; /* 进一步减少padding */
+  margin: 10px; /* 减少margin */
   overflow: hidden;
   animation: popIn 0.18s cubic-bezier(.4,1.4,.6,1) 1;
 }
@@ -1444,32 +1483,34 @@ const generateImageFromText = async () => {
 .post-textarea {
   line-height: 1.6;
   min-height: 100px;
-  padding: 12px;
+  padding: 10px;
+  margin-bottom: 0.5rem;
 }
 .tag-input-section {
-  margin: 10px 0 0 0;
+  margin: 0.3rem 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
 }
 
 .tag-input-wrapper {
   position: relative;
   width: 100%;
+  margin-bottom: 0.3rem;
 }
 
 .tag-input {
   border: 1.5px solid #e5e5e5;
   border-radius: 8px;
-  padding: 5px 6px;
-  font-size: 1rem;
+  padding: 3px 5px;
+  font-size: 0.85rem;
   outline: none;
   background: #f7f7f7;
   width: 80%;
-  min-height: 60px; /* 减小高度 */
-  resize: vertical; /* 允许用户调整高度 */
+  min-height: 32px;
+  resize: vertical;
   transition: border-color 0.2s, box-shadow 0.2s;
-  margin-bottom: 10px;
+  margin-bottom: 4px;
 }
 
 .comment-textarea:focus {
@@ -1479,10 +1520,10 @@ const generateImageFromText = async () => {
 .tag-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-  min-height: 32px;
-  padding: 4px;
+  gap: 5px;
+  margin-top: 0.1rem;
+  min-height: 28px;
+  padding: 3px;
   border-radius: 8px;
   transition: background-color 0.2s;
 }
@@ -1494,12 +1535,12 @@ const generateImageFromText = async () => {
 .tag-chip {
   background: #e6f9f0;
   color: #07c160;
-  border-radius: 12px;
-  padding: 4px 10px 4px 8px;
-  font-size: 0.98rem;
+  border-radius: 10px;
+  padding: 3px 8px 3px 6px;
+  font-size: 0.9rem;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   cursor: grab;
   transition: transform 0.2s, box-shadow 0.2s;
 }
@@ -1535,21 +1576,21 @@ const generateImageFromText = async () => {
 
 /* 常用标签区域样式 */
 .common-tags-section {
-  margin-bottom: 8px;
+  margin-bottom: 0.3rem;
 }
 
 .common-tags-title {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: #666;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   display: block;
 }
 
 .common-tags-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 0.2rem;
 }
 
 .common-tag-item {
@@ -1684,10 +1725,12 @@ const generateImageFromText = async () => {
 .modern-dialog {
   max-width: 600px;
   width: 90%;
-  border-radius: 18px;
+  min-width: auto; /* 移除最小宽度限制，使其在小屏幕上更好适配 */
+  border-radius: 16px; /* 稍微减小圆角 */
   box-shadow: 0 8px 32px rgba(0,0,0,0.13);
   background: #fff;
-  padding: 24px;
+  padding: 16px; /* 进一步减少padding */
+  margin: 10px; /* 减少margin */
   overflow: hidden;
   animation: popIn 0.18s cubic-bezier(.4,1.4,.6,1) 1;
 }
@@ -1821,7 +1864,8 @@ const generateImageFromText = async () => {
 .post-textarea {
   line-height: 1.6;
   min-height: 100px;
-  padding: 12px;
+  padding: 10px;
+  margin-bottom: 0.5rem;
 }
 
 /* 添加删除按钮样式 */
@@ -1848,8 +1892,8 @@ const generateImageFromText = async () => {
 /* AI功能按钮的CSS样式 */
 .ai-features {
   display: flex;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 0.5rem;
   flex-wrap: wrap;
 }
 
@@ -1944,63 +1988,129 @@ const generateImageFromText = async () => {
 
 /* AI生成结果预览 */
 .ai-result-preview {
-  margin-top: 16px;
-  padding: 16px;
-  background: #f9f9f9;
-  border-radius: 8px;
-  border: 1px dashed #ddd;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  margin-top: 15px;
+  overflow: hidden;
+  transition: all 0.3s ease;
 }
 
 .ai-result-preview-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  padding: 12px 15px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #eee;
 }
 
 .ai-result-preview-title {
-  font-weight: 600;
-  color: #07c160;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  font-weight: 600;
+  color: #333;
+}
+
+.ai-icon {
+  font-size: 1.2rem;
 }
 
 .ai-result-content {
-  padding: 8px;
-  background: white;
-  border-radius: 6px;
-  border: 1px solid #eee;
-  margin-bottom: 8px;
+  padding: 15px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
-.ai-result-actions {
+.ai-generated-text {
+  font-size: 1.1rem;
+  line-height: 1.5;
+  color: #333;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px dashed #eee;
+}
+
+.ai-analysis-info {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 0.9rem;
+}
+
+.ai-analysis-section {
+  margin-bottom: 12px;
+}
+
+.ai-analysis-title {
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 5px;
+}
+
+.ai-analysis-content {
+  color: #666;
+  line-height: 1.4;
+}
+
+.ai-tags-container {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  margin-top: 5px;
 }
 
-.ai-result-action-btn {
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
-  background: white;
-  cursor: pointer;
+.ai-suggested-tag {
+  background: #e1f5fe;
+  color: #0288d1;
+  padding: 4px 10px;
+  border-radius: 15px;
   font-size: 0.85rem;
+  cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.ai-result-action-btn:hover {
-  background: #f0f9f4;
-  border-color: #07c160;
-  color: #07c160;
+.ai-suggested-tag:hover {
+  background: #b3e5fc;
+  transform: translateY(-2px);
+}
+
+.ai-model-info {
+  font-size: 0.8rem;
+  color: #888;
+  text-align: right;
+  margin-top: 10px;
+  font-style: italic;
 }
 
 .ai-generated-image {
   max-width: 100%;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   display: block;
   margin: 0 auto;
+}
+
+.ai-result-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 15px;
+  background: #f8f9fa;
+  border-top: 1px solid #eee;
+}
+
+.ai-result-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 15px;
+  border-radius: 20px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
 }
 
 .accept-btn {
@@ -2083,8 +2193,8 @@ const generateImageFromText = async () => {
 /* AI功能按钮的CSS样式 */
 .ai-features {
   display: flex;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 0.5rem;
   flex-wrap: wrap;
 }
 
@@ -2179,63 +2289,129 @@ const generateImageFromText = async () => {
 
 /* AI生成结果预览 */
 .ai-result-preview {
-  margin-top: 16px;
-  padding: 16px;
-  background: #f9f9f9;
-  border-radius: 8px;
-  border: 1px dashed #ddd;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  margin-top: 15px;
+  overflow: hidden;
+  transition: all 0.3s ease;
 }
 
 .ai-result-preview-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  padding: 12px 15px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #eee;
 }
 
 .ai-result-preview-title {
-  font-weight: 600;
-  color: #07c160;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  font-weight: 600;
+  color: #333;
+}
+
+.ai-icon {
+  font-size: 1.2rem;
 }
 
 .ai-result-content {
-  padding: 8px;
-  background: white;
-  border-radius: 6px;
-  border: 1px solid #eee;
-  margin-bottom: 8px;
+  padding: 15px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
-.ai-result-actions {
+.ai-generated-text {
+  font-size: 1.1rem;
+  line-height: 1.5;
+  color: #333;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px dashed #eee;
+}
+
+.ai-analysis-info {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 0.9rem;
+}
+
+.ai-analysis-section {
+  margin-bottom: 12px;
+}
+
+.ai-analysis-title {
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 5px;
+}
+
+.ai-analysis-content {
+  color: #666;
+  line-height: 1.4;
+}
+
+.ai-tags-container {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  margin-top: 5px;
 }
 
-.ai-result-action-btn {
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
-  background: white;
-  cursor: pointer;
+.ai-suggested-tag {
+  background: #e1f5fe;
+  color: #0288d1;
+  padding: 4px 10px;
+  border-radius: 15px;
   font-size: 0.85rem;
+  cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.ai-result-action-btn:hover {
-  background: #f0f9f4;
-  border-color: #07c160;
-  color: #07c160;
+.ai-suggested-tag:hover {
+  background: #b3e5fc;
+  transform: translateY(-2px);
+}
+
+.ai-model-info {
+  font-size: 0.8rem;
+  color: #888;
+  text-align: right;
+  margin-top: 10px;
+  font-style: italic;
 }
 
 .ai-generated-image {
   max-width: 100%;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   display: block;
   margin: 0 auto;
+}
+
+.ai-result-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 15px;
+  background: #f8f9fa;
+  border-top: 1px solid #eee;
+}
+
+.ai-result-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 15px;
+  border-radius: 20px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
 }
 
 .accept-btn {
@@ -2279,8 +2455,8 @@ const generateImageFromText = async () => {
 /* AI功能按钮的CSS样式 */
 .ai-features {
   display: flex;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 0.5rem;
   flex-wrap: wrap;
 }
 
@@ -2375,63 +2551,129 @@ const generateImageFromText = async () => {
 
 /* AI生成结果预览 */
 .ai-result-preview {
-  margin-top: 16px;
-  padding: 16px;
-  background: #f9f9f9;
-  border-radius: 8px;
-  border: 1px dashed #ddd;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  margin-top: 15px;
+  overflow: hidden;
+  transition: all 0.3s ease;
 }
 
 .ai-result-preview-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  padding: 12px 15px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #eee;
 }
 
 .ai-result-preview-title {
-  font-weight: 600;
-  color: #07c160;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  font-weight: 600;
+  color: #333;
+}
+
+.ai-icon {
+  font-size: 1.2rem;
 }
 
 .ai-result-content {
-  padding: 8px;
-  background: white;
-  border-radius: 6px;
-  border: 1px solid #eee;
-  margin-bottom: 8px;
+  padding: 15px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
-.ai-result-actions {
+.ai-generated-text {
+  font-size: 1.1rem;
+  line-height: 1.5;
+  color: #333;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px dashed #eee;
+}
+
+.ai-analysis-info {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 0.9rem;
+}
+
+.ai-analysis-section {
+  margin-bottom: 12px;
+}
+
+.ai-analysis-title {
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 5px;
+}
+
+.ai-analysis-content {
+  color: #666;
+  line-height: 1.4;
+}
+
+.ai-tags-container {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  margin-top: 5px;
 }
 
-.ai-result-action-btn {
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
-  background: white;
-  cursor: pointer;
+.ai-suggested-tag {
+  background: #e1f5fe;
+  color: #0288d1;
+  padding: 4px 10px;
+  border-radius: 15px;
   font-size: 0.85rem;
+  cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.ai-result-action-btn:hover {
-  background: #f0f9f4;
-  border-color: #07c160;
-  color: #07c160;
+.ai-suggested-tag:hover {
+  background: #b3e5fc;
+  transform: translateY(-2px);
+}
+
+.ai-model-info {
+  font-size: 0.8rem;
+  color: #888;
+  text-align: right;
+  margin-top: 10px;
+  font-style: italic;
 }
 
 .ai-generated-image {
   max-width: 100%;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   display: block;
   margin: 0 auto;
+}
+
+.ai-result-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 15px;
+  background: #f8f9fa;
+  border-top: 1px solid #eee;
+}
+
+.ai-result-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 15px;
+  border-radius: 20px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
 }
 
 .accept-btn {
@@ -2547,10 +2789,12 @@ const generateImageFromText = async () => {
 .modern-dialog {
   max-width: 600px;
   width: 90%;
-  border-radius: 18px;
+  min-width: auto; /* 移除最小宽度限制，使其在小屏幕上更好适配 */
+  border-radius: 16px; /* 稍微减小圆角 */
   box-shadow: 0 8px 32px rgba(0,0,0,0.13);
   background: #fff;
-  padding: 24px;
+  padding: 16px; /* 进一步减少padding */
+  margin: 10px; /* 减少margin */
   overflow: hidden;
   animation: popIn 0.18s cubic-bezier(.4,1.4,.6,1) 1;
 }

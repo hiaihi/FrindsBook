@@ -279,9 +279,23 @@ export const generateTextFromImageAPI = async (imageData) => {
     const response = await api.post('/api/ai/generate-text', { imageData });
     
     // 移除加载提示
-    document.body.removeChild(loadingToast);
+    if (document.body.contains(loadingToast)) {
+      document.body.removeChild(loadingToast);
+    }
     
-    return response.data;
+    // 确保返回数据包含所需字段
+    if (response.data && response.data.success) {
+      return {
+        success: true,
+        generatedText: response.data.generatedText,
+        originalCaption: response.data.originalCaption || '',
+        enhancedCaption: response.data.enhancedCaption || '',
+        suggestedTags: response.data.suggestedTags || [],
+        model: response.data.model || 'AI模型'
+      };
+    } else {
+      throw new Error(response.data.message || '图片分析失败');
+    }
   } catch (error) {
     console.error('图片生成文案失败:', error);
     
@@ -299,6 +313,56 @@ export const generateTextFromImageAPI = async (imageData) => {
     }, 3000);
     
     throw error.response ? error.response.data : { message: '图片生成文案失败，请稍后再试' };
+  }
+};
+
+// AI功能：多图片生成文案
+export const generateTextFromMultipleImagesAPI = async (imagesData) => {
+  try {
+    // 创建加载状态提示
+    const loadingToast = document.createElement('div');
+    loadingToast.className = 'ai-loading-toast';
+    loadingToast.innerHTML = '<div class="ai-loading-spinner"></div><span>AI正在分析多张图片...</span>';
+    document.body.appendChild(loadingToast);
+    
+    // 发送请求到后端API
+    const response = await api.post('/api/ai/generate-text', { imagesData });
+    
+    // 移除加载提示
+    if (document.body.contains(loadingToast)) {
+      document.body.removeChild(loadingToast);
+    }
+    
+    // 确保返回数据包含所需字段
+    if (response.data && response.data.success) {
+      return {
+        success: true,
+        generatedText: response.data.generatedText,
+        originalCaption: response.data.originalCaption || '',
+        enhancedCaption: response.data.enhancedCaption || '',
+        suggestedTags: response.data.suggestedTags || [],
+        model: response.data.model || 'AI模型'
+      };
+    } else {
+      throw new Error(response.data.message || '图片分析失败');
+    }
+  } catch (error) {
+    console.error('多图片生成文案失败:', error);
+    
+    // 显示错误提示
+    const errorToast = document.createElement('div');
+    errorToast.className = 'ai-loading-toast error';
+    errorToast.innerHTML = '<span class="ai-error-icon">!</span><span>图片分析失败，请稍后再试</span>';
+    document.body.appendChild(errorToast);
+    
+    // 3秒后移除错误提示
+    setTimeout(() => {
+      if (document.body.contains(errorToast)) {
+        document.body.removeChild(errorToast);
+      }
+    }, 3000);
+    
+    throw error.response ? error.response.data : { message: '多图片生成文案失败，请稍后再试' };
   }
 };
 

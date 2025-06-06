@@ -168,13 +168,17 @@
             
             <div class="post-content">
               <p>{{ post.content }}</p>
-              <div v-if="post.images && post.images.length" :class="['post-images', {
-                'single-image': post.images.length === 1,
-                'two-images': post.images.length === 2,
-                'three-images': post.images.length === 3
-              }]">
-                <img v-for="(image, index) in post.images" :key="index" :src="image" class="post-image" @click="showImagePreview(image)"/>
+              <div v-if="post.images && post.images.length > 0" class="post-images">
+                <img 
+                  v-for="(image, index) in post.images" 
+                  :key="index" 
+                  :src="image" 
+                  alt="post image" 
+                  class="post-image"
+                  @click="showImagePreview(image)"
+                >
               </div>
+              
               <div v-if="post.tags && post.tags.length > 0" class="post-tags">
                 <span v-for="(tag, index) in post.tags" :key="index" class="post-tag">
                   #{{ tag }}
@@ -184,16 +188,15 @@
             
             <div class="post-footer">
               <div class="post-stats">
-                <button class="stat-btn" :class="{ 'liked': isPostLiked(post) }" @click="toggleLike(post)">
-                  <i class="fas fa-heart"></i>
+                <div class="stat">
+                  <i class="fas fa-heart" :class="{ 'liked': isPostLiked(post) }" @click="toggleLike(post)"></i>
                   <span>{{ post.likes ? post.likes.length : 0 }}</span>
-                </button>
-                <button class="stat-btn" @click="toggleComments(post)">
+                </div>
+                <div class="stat">
                   <i class="fas fa-comment"></i>
                   <span>{{ post.comments ? post.comments.length : 0 }}</span>
-                </button>
+                </div>
               </div>
-            </div>
               
               <!-- 评论区 -->
               <div v-if="post.showComments" class="post-comments">
@@ -235,6 +238,10 @@
         </div>
       </div>
     </div>
+    <div class="theme-switch" @click="toggleTheme" :title="isDarkMode ? '切换到浅色模式' : '切换到深色模式'">
+      <i class="fas" :class="isDarkMode ? 'fa-sun' : 'fa-moon'"></i>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -592,8 +599,7 @@ const showImagePreview = (image) => {
   previewContainer.style.cursor = 'pointer';
   
   const previewImage = document.createElement('img');
-  // 检查图片URL是否已包含http前缀
-  previewImage.src = image.startsWith('http') ? image : `http://localhost:3000${image}`;
+  previewImage.src = `http://localhost:3000${image}`;
   previewImage.style.maxWidth = '90%';
   previewImage.style.maxHeight = '90%';
   previewImage.style.borderRadius = '8px';
@@ -1089,19 +1095,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 0.8rem;
-  font-size: 1.5rem;
+  font-size: 1.3rem;
+  margin-top: 0;
   margin-bottom: 1.5rem;
   padding-bottom: 0.8rem;
   border-bottom: 2px solid #f0f0f0;
   color: #333;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 .section-title i {
   color: #1890ff;
-  font-size: 1.3rem;
 }
 
 .loading-posts {
@@ -1141,49 +1144,38 @@ onMounted(() => {
 
 .posts-container {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); /* 增加卡片宽度 */
-  gap: 25px; /* 增加网格间距 */
-  margin-top: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* 响应式网格布局 */
+  gap: 20px; /* 增加网格间距 */
 }
 
 .post-card {
   background: #fff;
-  border-radius: 16px; /* 增加圆角 */
-  box-shadow: 0 8px 20px rgba(0,0,0,0.08); /* 优化阴影效果 */
-  padding: 24px; /* 增加内边距 */
-  transition: all 0.3s ease-in-out;
+  border-radius: 12px; /* 增加圆角 */
+  box-shadow: 0 6px 18px rgba(0,0,0,0.1); /* 调整阴影 */
+  padding: 20px; /* 增加内边距 */
+  transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(0,0,0,0.03); /* 添加微妙边框 */
-  overflow: hidden; /* 确保内容不溢出 */
 }
 
 .post-card:hover {
-  transform: translateY(-6px); /* 增强悬停效果 */
-  box-shadow: 0 12px 28px rgba(0,0,0,0.12);
-  border-color: rgba(24, 144, 255, 0.1); /* 悬停时边框颜色变化 */
+  transform: translateY(-5px); /* 添加悬停效果 */
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
 }
 
 .post-header {
   display: flex;
   align-items: center;
-  margin-bottom: 18px; /* 增加下边距 */
+  margin-bottom: 15px; /* 调整下边距 */
 }
 
 .post-avatar {
-  width: 50px; /* 增加头像大小 */
-  height: 50px;
+  width: 45px; /* 调整头像大小 */
+  height: 45px;
   border-radius: 50%;
   object-fit: cover;
-  margin-right: 14px; /* 调整右边距 */
-  border: 2px solid #f0f0f0;
-  transition: all 0.3s;
-  box-shadow: 0 3px 8px rgba(0,0,0,0.1); /* 添加头像阴影 */
-}
-
-.post-avatar:hover {
-  border-color: #1890ff;
-  transform: scale(1.05);
+  margin-right: 12px; /* 调整右边距 */
+  border: 2px solid #eee;
 }
 
 .post-info {
@@ -1193,22 +1185,12 @@ onMounted(() => {
 .post-author {
   font-weight: 600;
   color: #333;
-  font-size: 1.15rem; /* 增加字体大小 */
-  margin-bottom: 3px; /* 添加间距 */
+  font-size: 1.1rem; /* 调整字体大小 */
 }
 
 .post-time {
-  font-size: 0.85rem;
+  font-size: 0.85rem; /* 调整字体大小 */
   color: #777;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.post-time:before {
-  content: '•';
-  font-size: 0.8rem;
-  color: #aaa;
 }
 
 .post-actions {
@@ -1216,149 +1198,88 @@ onMounted(() => {
 }
 
 .post-content {
-  margin-bottom: 18px; /* 增加下边距 */
+  margin-bottom: 15px; /* 调整下边距 */
 }
 
 .post-content p {
-  margin: 0 0 12px; /* 调整段落下边距 */
-  line-height: 1.7; /* 增加行高 */
-  color: #333;
-  font-size: 1.05rem; /* 增加字体大小 */
+  margin: 0 0 10px; /* 调整段落下边距 */
+  line-height: 1.6; /* 调整行高 */
+  color: #444;
 }
 
 .post-images {
   display: grid;
-  /* 修改网格布局，根据图片数量自动调整布局 */
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px; /* 增加图片间距 */
-  margin: 15px 0;
-  border-radius: 12px;
-  overflow: hidden; /* 确保图片不溢出 */
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); /* 响应式图片网格 */
+  gap: 10px; /* 图片间距 */
+  margin-top: 10px;
 }
 
 .post-image {
   width: 100%;
-  aspect-ratio: 1/1; /* 使用固定宽高比而不是固定高度 */
-  border-radius: 10px; /* 增加圆角 */
+  height: auto; /* 保持图片比例 */
+  border-radius: 8px; /* 增加圆角 */
   object-fit: cover;
   cursor: pointer;
-  transition: all 0.3s ease-in-out;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08); /* 添加图片阴影 */
-}
-
-/* 添加根据图片数量的特殊布局 */
-.post-images.single-image {
-  grid-template-columns: minmax(200px, 400px);
-}
-
-.post-images.two-images {
-  grid-template-columns: repeat(2, 1fr);
-}
-
-.post-images.three-images {
-  grid-template-columns: repeat(3, 1fr);
-}
-
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .post-images {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 10px;
-  }
-  
-  .post-images.single-image {
-    grid-template-columns: minmax(150px, 300px);
-  }
+  transition: transform 0.3s ease-in-out;
 }
 
 .post-image:hover {
-  transform: scale(1.03); /* 增强悬停放大效果 */
-  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+  transform: scale(1.02); /* 添加悬停放大效果 */
 }
 
 .post-tags {
-  margin: 12px 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  margin-top: 10px;
 }
 
 .post-tag {
-  display: inline-flex;
-  align-items: center;
-  background: #f0f5ff; /* 更改背景色为蓝色系 */
-  color: #1890ff; /* 更改字体颜色为主题色 */
-  padding: 5px 12px;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  transition: all 0.2s;
-  border: 1px solid rgba(24, 144, 255, 0.2); /* 添加微妙边框 */
-}
-
-.post-tag:hover {
-  background: #e6f7ff;
-  transform: translateY(-2px);
+  display: inline-block;
+  background: #e9ecef; /* 调整背景色 */
+  color: #495057; /* 调整字体颜色 */
+  padding: 4px 8px;
+  border-radius: 15px;
+  font-size: 0.8rem;
+  margin-right: 5px;
 }
 
 .post-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-top: 1px solid #f0f0f0; /* 更改边框颜色 */
-  padding-top: 16px; /* 增加内边距 */
+  border-top: 1px solid #eee; /* 添加顶部边框 */
+  padding-top: 15px; /* 调整内边距 */
   margin-top: auto; /* 将 footer 推到底部 */
 }
 
 .post-stats {
   display: flex;
-  gap: 20px; /* 增加间距 */
+  gap: 20px; /* 调整统计数据间距 */
 }
 
-.stat-btn {
+.stat {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   color: #555;
   cursor: pointer;
-  transition: all 0.3s ease-in-out;
-  background: none;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-weight: 500;
+  transition: color 0.3s ease-in-out;
 }
 
-.stat-btn:hover {
-  color: #1890ff;
-  background-color: rgba(24, 144, 255, 0.08);
-  transform: translateY(-2px);
-}
-
-.stat-btn.liked {
-  color: #ff4d4f;
-  background-color: rgba(255, 77, 79, 0.05);
-}
-
-.stat-btn.liked:hover {
-  background-color: rgba(255, 77, 79, 0.1);
-}
-
-.stat-btn i {
+.stat i {
   font-size: 1.1rem;
 }
 
-.stat-btn span {
-  font-size: 0.95rem;
+.stat .liked {
+  color: #ff4d4f; /* 点赞后的颜色 */
+}
+
+.stat:hover {
+  color: #1890ff; /* 悬停颜色 */
 }
 
 .post-comments {
-  margin-top: 18px;
-  border-top: 1px solid #f0f0f0;
-  padding-top: 18px;
-  background-color: #fafafa; /* 添加背景色 */
-  border-radius: 12px; /* 添加圆角 */
-  padding: 16px; /* 添加内边距 */
+  margin-top: 15px;
+  border-top: 1px solid #eee;
+  padding-top: 15px;
 }
 
 .comment {
