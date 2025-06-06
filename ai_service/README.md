@@ -1,138 +1,83 @@
 # 图像描述AI服务使用指南
 
-本文档提供了如何准备数据集、训练模型以及将前端与后端集成的详细说明。
+本文档提供了如何使用AI图像描述服务、了解其工作原理以及与前端集成的详细说明。
 
 ## 1. 系统概述
 
-图像描述AI服务是一个基于深度学习的系统，能够自动为上传的图片生成描述性文本。系统使用ResNet18作为特征提取器，并通过分类器将图像映射到预定义的描述类别。
+图像描述AI服务是一个基于深度学习的系统，能够自动为上传的图片生成朋友圈风格的描述性文本。系统使用BLIP（Bootstrapping Language-Image Pre-training）模型进行图像理解，并通过MarianMT翻译模型将英文描述转换为中文，最后通过规则增强生成朋友圈风格的文案。
 
-## 2. 数据集准备
+## 2. 技术架构
 
-在训练模型之前，需要准备适当的数据集。数据集应包含图像及其对应的标签。
+本服务基于以下技术栈构建：
 
-### 2.1 数据集格式
+- **后端框架**：Flask
+- **图像理解**：BLIP模型
+- **机器翻译**：MarianMT模型（英译中）
+- **文本增强**：基于规则的朋友圈风格化处理
 
-数据集应按以下格式组织：
+## 3. 模型说明
 
-```
-dataset/
-  ├── annotations.json  # 包含图像文件名和标签的JSON文件
-  └── images/           # 包含所有图像文件的目录
-      ├── image1.jpg
-      ├── image2.jpg
-      └── ...
-```
+### 3.1 BLIP模型
 
-`annotations.json`文件应包含以下格式的数据：
+BLIP（Bootstrapping Language-Image Pre-training）是一个强大的视觉-语言预训练模型，能够理解图像内容并生成相应的文本描述。本服务使用BLIP的图像描述生成能力，为上传的图片创建准确的英文描述。
 
-```json
-[
-  {
-    "image_file": "image1.jpg",
-    "label_index": 0
-  },
-  {
-    "image_file": "image2.jpg",
-    "label_index": 1
-  },
-  ...
-]
-```
+### 3.2 MarianMT翻译模型
 
-其中，`label_index`是一个整数，表示图像所属的类别索引（0-9）。
+MarianMT是一个高效的机器翻译模型，本服务使用Helsinki-NLP的英译中模型，将BLIP生成的英文描述翻译成中文，以便后续处理。
 
-### 2.2 类别定义
+### 3.3 朋友圈风格化处理
 
-系统预定义了10个类别，每个类别包含主题、风格和情感三个属性：
+系统使用一系列规则和模板，对翻译后的中文描述进行风格化处理，添加表情符号、网络流行语和朋友圈常用表达，使生成的文案更符合社交媒体分享的风格。
 
-```python
-INDEX_TO_CATEGORY = {
-    0: {"subject": "自然风光", "style": "色彩鲜明", "feeling": "宁静"},
-    1: {"subject": "城市景观", "style": "构图和谐", "feeling": "活力"},
-    2: {"subject": "人物肖像", "style": "光影对比强烈", "feeling": "温暖"},
-    3: {"subject": "美食", "style": "细节丰富", "feeling": "欢乐"},
-    4: {"subject": "动物", "style": "简约清新", "feeling": "可爱"},
-    5: {"subject": "建筑", "style": "复古怀旧", "feeling": "神秘"},
-    6: {"subject": "日常生活", "style": "黑白经典", "feeling": "怀旧"},
-    7: {"subject": "旅行", "style": "锐利清晰", "feeling": "振奋"},
-    8: {"subject": "运动", "style": "动感十足", "feeling": "激情"},
-    9: {"subject": "艺术作品", "style": "抽象创意", "feeling": "惊奇"}
-}
+## 4. 安装与配置
+
+### 4.1 环境要求
+
+- Python 3.8+
+- PyTorch 1.7+
+- Transformers 4.0+
+- Flask
+- CUDA支持（推荐，用于GPU加速）
+
+### 4.2 安装步骤
+
+1. 克隆仓库并进入AI服务目录：
+
+```bash
+git clone https://github.com/yourusername/FriendsBook.git
+cd FriendsBook/ai_service
 ```
 
-### 2.3 数据集上传
+2. 安装依赖：
 
-可以通过以下API上传数据集：
-
-```
-POST /api/upload-dataset
+```bash
+pip install -r requirements.txt
 ```
 
-请求体应包含以下JSON数据：
+3. 下载预训练模型（可选，首次运行时会自动下载）：
 
-```json
-{
-  "dataset": [
-    {
-      "image_file": "image1.jpg",
-      "label_index": 0
-    },
-    ...
-  ]
-}
+```bash
+mkdir -p models/blip-image-captioning-base
+# 下载BLIP模型文件到models/blip-image-captioning-base目录
 ```
 
-## 3. 模型训练
+4. 启动服务：
 
-### 3.1 训练API
-
-可以通过以下API启动模型训练：
-
-```
-POST /api/train
+```bash
+python app.py
 ```
 
-请求体可以包含以下参数（均为可选）：
+服务将在 http://localhost:5000 上运行。
 
-```json
-{
-  "epochs": 10,         // 训练轮数
-  "batch_size": 32,    // 批次大小
-  "learning_rate": 0.001  // 学习率
-}
-```
+## 5. API接口
 
-### 3.2 训练过程
-
-训练过程包括以下步骤：
-
-1. 加载数据集
-2. 初始化模型
-3. 定义损失函数和优化器
-4. 训练循环
-5. 保存模型
-
-训练完成后，模型将保存在`models/image_caption_model.pth`文件中，同时会生成一个`training_info.json`文件，记录训练参数和时间。
-
-## 4. 模型加载
-
-可以通过以下API加载已训练的模型：
-
-```
-POST /api/load-model
-```
-
-## 5. 图像描述生成
-
-### 5.1 单张图片描述生成
-
-可以通过以下API为单张图片生成描述：
+### 5.1 图像描述生成
 
 ```
 POST /api/generate-text
 ```
 
-请求体应包含以下JSON数据：
+**请求参数**：
 
 ```json
 {
@@ -140,22 +85,31 @@ POST /api/generate-text
 }
 ```
 
-### 5.2 多张图片描述生成
-
-可以通过以下API为多张图片生成综合描述：
-
-```
-POST /api/generate-text
-```
-
-请求体应包含以下JSON数据：
+**响应**：
 
 ```json
 {
-  "imagesData": [
-    "data:image/jpeg;base64,/9j/4AAQSkZJRg...",  // Base64编码的图像数据
-    "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
-  ]
+  "success": true,
+  "generatedText": "今日份，美丽的风景让人心旷神怡 ✨🌈",
+  "originalCaption": "a beautiful landscape with mountains and trees",
+  "enhancedCaption": "美丽的风景让人心旷神怡",
+  "suggestedTags": ["自然风光", "户外", "风景"],
+  "model": "BLIP+翻译+规则增强"
+}
+```
+
+### 5.2 健康检查
+
+```
+GET /api/health
+```
+
+**响应**：
+
+```json
+{
+  "status": "ok",
+  "timestamp": 1634567890.123
 }
 ```
 
@@ -182,39 +136,39 @@ async function generateTextFromImageAPI(imageData) {
     throw error;
   }
 }
-
-// 多张图片描述生成
-async function generateTextFromMultipleImagesAPI(imagesData) {
-  try {
-    const response = await axios.post('http://localhost:5000/api/generate-text', {
-      imagesData: imagesData
-    });
-    return response.data;
-  } catch (error) {
-    console.error('生成文案失败:', error);
-    throw error;
-  }
-}
 ```
 
 ## 7. 故障排除
 
-### 7.1 模型未加载
+### 7.1 模型加载失败
 
-如果收到"模型未加载或加载失败"的错误，请确保已经通过`/api/load-model`API加载了模型，或者已经通过`/api/train`API训练了模型。
+如果收到"加载BLIP模型失败"或"加载翻译模型失败"的错误，请检查：
 
-### 7.2 数据集不存在
+- 是否有足够的磁盘空间存储模型
+- 网络连接是否正常（首次运行需要下载模型）
+- GPU内存是否足够（如使用GPU模式）
 
-如果收到"训练数据集不存在"的错误，请确保已经通过`/api/upload-dataset`API上传了数据集。
+### 7.2 图像处理失败
 
-### 7.3 图像处理失败
+如果收到"BLIP处理图像失败"或"BLIP生成描述失败"的错误，请检查：
 
-如果收到"图像处理失败"的错误，请检查图像格式是否正确，以及Base64编码是否有效。
+- 图像格式是否正确
+- Base64编码是否有效
+- 图像分辨率是否过高（可尝试压缩图像）
+
+### 7.3 翻译失败
+
+如果生成的文本仍为英文，可能是翻译模型出现问题，请检查：
+
+- 翻译模型是否正确加载
+- 输入文本是否过长
 
 ## 8. 下一步改进
 
-1. 实现更复杂的图像描述模型，如基于Transformer的模型
+1. 实现更复杂的图像描述模型，如基于更新版本的BLIP或其他多模态模型
 2. 添加更多的预训练模型选项
 3. 实现在线学习功能，允许系统从用户反馈中学习
 4. 添加更多的语言支持
 5. 优化模型性能和推理速度
+6. 增加更多的文本风格选项
+7. 实现图像内容审核功能
